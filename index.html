@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Gemini SQL Chat UI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+        }
+        #chatBox {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            white-space: pre-wrap; /* Keeps SQL formatting */
+            background-color: #f9f9f9;
+        }
+        #userInput {
+            width: 80%;
+            padding: 8px;
+        }
+        #sendButton {
+            padding: 8px 12px;
+        }
+        code {
+            background-color: #eee;
+            padding: 4px;
+            display: block;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>PostgreSQL Query Generator (Gemini)</h2>
+
+    <div id="chatBox"></div>
+
+    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
+    <button id="sendButton">Send</button>
+    <script>
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+    
+        let messages = []; // Store full conversation history
+    
+        sendButton.addEventListener('click', async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+    
+            // Add user message to history
+            messages.push({ role: 'user', content: message });
+    
+            // Show user message
+            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
+    
+            // Special exit handling
+            if (message.toLowerCase() === 'exit') {
+                alert('Session ended. Clearing chat...');
+                messages = [];  // Clear session memory
+                chatBox.innerHTML = ''; // Clear chat window
+                userInput.value = '';
+                return;
+            }
+    
+            // Send to backend
+            const response = await fetch('http://localhost:8000/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ messages: messages })
+            });
+    
+            const data = await response.json();
+    
+            // Add AI reply to history
+            messages.push({ role: 'assistant', content: data.reply });
+    
+            // Show AI reply
+            // chatBox.innerHTML += `<div><b>Gemini:</b> ${data.reply}</div>`;
+            chatBox.innerHTML += `<div><b>Gemini:</b> <code>${data.reply}</code></div>`;
+
+            // Scroll to bottom
+            chatBox.scrollTop = chatBox.scrollHeight;
+    
+            // Clear input
+            userInput.value = '';
+        });
+    </script>
+ 
+</body>
+</html>
