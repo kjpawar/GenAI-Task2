@@ -14,7 +14,7 @@
             height: 400px;
             overflow-y: auto;
             margin-bottom: 10px;
-            white-space: pre-wrap; /* Keeps SQL formatting */
+            white-space: pre-wrap;
             background-color: #f9f9f9;
         }
         #userInput {
@@ -30,7 +30,22 @@
             display: block;
             margin-top: 5px;
         }
+        /* Spinner style */
+        .spinner {
+            margin: 10px 0;
+            width: 24px;
+            height: 24px;
+            border: 4px solid #ccc;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
+    
 </head>
 <body>
 
@@ -45,52 +60,58 @@
         const userInput = document.getElementById('userInput');
         const sendButton = document.getElementById('sendButton');
     
-        let messages = []; // Store full conversation history
+        let messages = [];
+        let loadingMessageId = null;
     
         sendButton.addEventListener('click', async () => {
             const message = userInput.value.trim();
             if (!message) return;
     
-            // Add user message to history
             messages.push({ role: 'user', content: message });
     
-            // Show user message
             chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
     
-            // Special exit handling
             if (message.toLowerCase() === 'exit') {
                 alert('Session ended. Clearing chat...');
-                messages = [];  // Clear session memory
-                chatBox.innerHTML = ''; // Clear chat window
+                messages = [];
+                chatBox.innerHTML = '';
                 userInput.value = '';
                 return;
             }
     
-            // Send to backend
-            const response = await fetch('http://localhost:8000/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ messages: messages })
-            });
-    
-            const data = await response.json();
-    
-            // Add AI reply to history
-            messages.push({ role: 'assistant', content: data.reply });
-    
-            // Show AI reply
-            // chatBox.innerHTML += `<div><b>Gemini:</b> ${data.reply}</div>`;
-            chatBox.innerHTML += `<div><b>Gemini:</b> <code>${data.reply}</code></div>`;
-
-            // Scroll to bottom
+            // Show spinner
+            loadingMessageId = `loading-${Date.now()}`;
+            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
             chatBox.scrollTop = chatBox.scrollHeight;
     
-            // Clear input
+            try {
+                const response = await fetch('http://localhost:8000/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ messages: messages })
+                });
+    
+                const data = await response.json();
+    
+                messages.push({ role: 'assistant', content: data.reply });
+    
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) loadingDiv.remove();
+    
+                chatBox.innerHTML += `<div><b>Gemini:</b> <code>${data.reply}</code></div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+            } catch (error) {
+                console.error('Error:', error);
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
+            }
+    
             userInput.value = '';
         });
     </script>
+    
  
 </body>
 </html>
