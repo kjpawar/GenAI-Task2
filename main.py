@@ -3,9 +3,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import psycopg2
+import os
+from dotenv import load_dotenv
 
 from gemini_sdk import get_chat_completion, model
-
+load_dotenv()
 app = FastAPI()
 
 # Allow CORS
@@ -20,11 +22,11 @@ app.add_middleware(
 # PostgreSQL connection
 def get_db_connection():
     return psycopg2.connect(
-        host="localhost",
-        database="demodb",
-        user="postgres",
-        password="postgre2025",
-        port="5432"
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT"),
     )
 
 def run_sql_query(sql_query):

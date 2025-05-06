@@ -1,47 +1,91 @@
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
+import psycopg2
 
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-TABLE_STRUCTURE = """
-You must assume the following PostgreSQL database schema:
+def fetch_table_structure():
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST"),
+            database=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            port=os.getenv("DB_PORT"),
+        )
+        cur = conn.cursor()
 
-Tables:
+        # Fetch tables
+        cur.execute("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            ORDER BY table_name;
+        """)
+        tables = [row[0] for row in cur.fetchall()]
 
-1. employee
-- id (integer, primary key)
-- name (text)
-- age (integer)
-- department_id (integer, foreign key references department(id))
-- salary (numeric)
-- join_date (date)
+        schema_info = "You must assume the following PostgreSQL database schema:\n\nTables:\n"
 
-2. department
-- id (integer, primary key)
-- name (text)
-- location (text)
+        # Fetch columns for each table
+        for table in tables:
+            cur.execute(f"""
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_name = '{table}'
+                ORDER BY ordinal_position;
+            """)
+            columns = cur.fetchall()
 
-3. project
-- id (integer, primary key)
-- name (text)
-- department_id (integer, foreign key references department(id))
-- start_date (date)
-- end_date (date)
+            schema_info += f"\n1. {table}\n"
+            for col_name, data_type in columns:
+                schema_info += f"- {col_name} ({data_type})\n"
 
-Relationships:
-- employee.department_id is a foreign key to department.id
-- project.department_id is a foreign key to department.id
+        # Fetch foreign keys
+        cur.execute("""
+            SELECT
+                tc.table_name, kcu.column_name,
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name
+            FROM
+                information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                JOIN information_schema.constraint_column_usage AS ccu
+                  ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'FOREIGN KEY';
+        """)
+        foreign_keys = cur.fetchall()
 
-Rules:
+        if foreign_keys:
+            schema_info += "\nRelationships:\n"
+            for table, column, foreign_table, foreign_column in foreign_keys:
+                schema_info += f"- {table}.{column} is a foreign key to {foreign_table}.{foreign_column}\n"
+
+        # Rules
+        schema_info += """
+\nRules:
 - Always generate queries based on these tables and their relationships.
 - Use proper JOINs where necessary based on foreign keys.
 - Use ILIKE instead of = for any text comparison to make it case-insensitive.
 - Do not hallucinate columns that are not in these tables.
 - Output only pure PostgreSQL SQL code, without markdown formatting (no ```sql).
 """
+
+        cur.close()
+        return schema_info
+
+    except Exception as e:
+        print(f"Error fetching table structure: {e}")
+        return "Could not fetch table structure."
+    finally:
+        if conn:
+            conn.close()
+
+TABLE_STRUCTURE = fetch_table_structure()
 
 model = genai.GenerativeModel('gemini-1.5-pro')
 
