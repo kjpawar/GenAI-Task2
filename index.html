@@ -15,8 +15,8 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body>
 
+<body>
     <h2>PostgreSQL Query Generator (Gemini)</h2>
 
     <div id="chatBox"></div>
@@ -33,31 +33,47 @@
         const chartCanvas = document.getElementById('chart');
         let chart;
 
+        function detectChartType(chartData) {
+            const xLabels = chartData.x;
+            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
+                return 'line';
+            } else if (xLabels.length <= 5) {
+                return 'pie';
+            } else {
+                return 'bar';
+            }
+        }
+
         function renderChart(chartData) {
             if (chart) chart.destroy();
             chartCanvas.style.display = 'block';
+
+            const chartType = detectChartType(chartData);
+
             chart = new Chart(chartCanvas, {
-                type: 'pie',
+                type: chartType,
                 data: {
                     labels: chartData.x,
                     datasets: [{
-                        label: 'Values',
+                        label: chartData.y_label || 'Values',
                         data: chartData.y,
-                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6'],
-                        borderWidth: 1
+                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        fill: false,
+                        tension: 0.4
                     }]
                 },
                 options: {
                     responsive: false,
                     plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Chart'
-                        }
-                    }
+                        legend: { position: chartType === 'pie' ? 'top' : 'bottom' },
+                        title: { display: true, text: 'Generated Chart' }
+                    },
+                    scales: (chartType !== 'pie') ? {
+                        x: { title: { display: true, text: chartData.x_label || 'X Axis' } },
+                        y: { title: { display: true, text: chartData.y_label || 'Y Axis' }, beginAtZero: true }
+                    } : {}
                 }
             });
         }
@@ -90,15 +106,230 @@
                     chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
 
                     if (data.chart_data) {
+                        chatBox.innerHTML += `<div><b>Chart Data JSON:</b> <code>${JSON.stringify(data.chart_data, null, 2)}</code></div>`;
                         renderChart(data.chart_data);
-                    } else if (data.db_result && data.db_result.rows.length > 0) {
+                    } else {
                         let formattedResult = "";
-                        data.db_result.rows.forEach(row => {
-                            formattedResult += row.join(' | ') + "<br>";
-                        });
+                        if (data.db_result && data.db_result.rows.length > 0) {
+                            data.db_result.rows.forEach(row => {
+                                formattedResult += row.join(' | ') + "\n";
+                            });
+                        } else {
+                            formattedResult = "No data found.";
+                        }
+
                         chatBox.innerHTML += `<div><b>Result:</b><br>${formattedResult}</div>`;
                         chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
                     }
+                }
+
+                chatBox.scrollTop = chatBox.scrollHeight;
+            } catch (error) {
+                console.error('Error:', error);
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
+            }
+
+            userInput.value = '';
+        });
+
+        let messages = [];
+    </script>
+</body>
+</html>
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PostgreSQL Query Generator (Gemini)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+        }
+
+        #chatBox {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            white-space: pre-wrap;
+            background-color: #f9f9f9;
+        }
+
+        #userInput {
+            width: 80%;
+            padding: 8px;
+        }
+
+        #sendButton {
+            padding: 8px 12px;
+        }
+
+        code {
+            background-color: #eee;
+            padding: 4px;
+            display: block;
+            margin-top: 5px;
+        }
+
+        canvas {
+            width: 300px !important;
+            height: 300px !important;
+            margin-top: 10px;
+        }
+
+        .spinner {
+            margin: 10px 0;
+            width: 24px;
+            height: 24px;
+            border: 4px solid #ccc;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>PostgreSQL Query Generator (Gemini)</h2>
+
+    <div id="chatBox"></div>
+
+    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
+    <button id="sendButton">Send</button>
+
+    <canvas id="chart" style="display:none;"></canvas>
+
+    <script>
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const chartCanvas = document.getElementById('chart');
+        let chart;
+
+        function detectChartType(chartData) {
+            const xLabels = chartData.x;
+
+            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
+                return 'line';
+            } else if (xLabels.length <= 5) {
+                return 'pie';
+            } else {
+                return 'bar';
+            }
+        }
+
+        function renderChart(chartData) {
+            if (chart) chart.destroy();
+            chartCanvas.style.display = 'block';
+
+            const chartType = detectChartType(chartData);
+
+            chart = new Chart(chartCanvas, {
+                type: chartType,
+                data: {
+                    labels: chartData.x,
+                    datasets: [{
+                        label: chartData.y_label || 'Values', // <- Dynamic Y label for legend
+                        data: chartData.y,
+                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        fill: false,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            position: chartType === 'pie' ? 'top' : 'bottom',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Generated Chart'
+                        }
+                    },
+                    scales: (chartType !== 'pie') ? {
+                        x: {
+                            title: {
+                                display: true,
+                                text: chartData.x_label || 'X Axis' // <- Dynamic X label
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: chartData.y_label || 'Y Axis' // <- Dynamic Y label
+                            },
+                            beginAtZero: true
+                        }
+                    } : {}
+                }
+            });
+        }
+        sendButton.addEventListener('click', async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            messages.push({ role: 'user', content: message });
+            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
+
+            loadingMessageId = `loading-${Date.now()}`;
+            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                const response = await fetch('http://localhost:8000/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: messages })
+                });
+
+                const data = await response.json();
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) loadingDiv.remove();
+
+                if (data.error) {
+                    chatBox.innerHTML += `<div style="color:red;"><b>Error:</b> ${data.human_answer}</div>`;
+                } else {
+                    chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
+
+                    if (data.chart_data) {
+                        chatBox.innerHTML += `<div><b>Chart Data JSON:</b> <code>${JSON.stringify(data.chart_data, null, 2)}</code></div>`;
+                        renderChart(data.chart_data);
+                    } else {
+                        let formattedResult = "";
+                        if (data.db_result && data.db_result.rows.length > 0) {
+                            data.db_result.rows.forEach(row => {
+                                formattedResult += row.join(' | ') + "\n";
+                            });
+                        } else {
+                            formattedResult = "No data found.";
+                        }
+
+                        chatBox.innerHTML += `<div><b>Result:</b><br>${formattedResult}</div>`;
+                        chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
+                    }
+
+
                 }
 
                 chatBox.scrollTop = chatBox.scrollHeight;
@@ -116,7 +347,202 @@
     </script>
 
 </body>
-</html>
+
+</html> -->
+
+
+<!-- <script>
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const chartCanvas = document.getElementById('chart');
+        let chart;
+    
+        function detectChartType(chartData) {
+            const xLabels = chartData.x;
+    
+            // If x labels are dates or years -> Line Chart
+            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
+                return 'line';
+            }
+            // If less than 5 categories -> Pie Chart
+            else if (xLabels.length <= 5) {
+                return 'pie';
+            }
+            // Otherwise -> Bar Chart
+            else {
+                return 'bar';
+            }
+        }
+    
+        function renderChart(chartData) {
+            if (chart) chart.destroy();
+            chartCanvas.style.display = 'block';
+    
+            const chartType = detectChartType(chartData);
+    
+            chart = new Chart(chartCanvas, {
+                type: chartType,
+                data: {
+                    labels: chartData.x,
+                    datasets: [{
+                        label: 'Values',
+                        data: chartData.y,
+                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        fill: false,
+                        tension: 0.4 // Smooth curve for line chart
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            position: chartType === 'pie' ? 'top' : 'bottom',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Generated Chart'
+                        }
+                    },
+                    scales: (chartType !== 'pie') ? {
+                        x: {
+                            title: { display: true, text: 'X Axis' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Y Axis' },
+                            beginAtZero: true
+                        }
+                    } : {}
+                }
+            });
+        }
+    
+        sendButton.addEventListener('click', async () => {
+            const message = userInput.value.trim();
+            if (!message) return;
+    
+            messages.push({ role: 'user', content: message });
+            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
+    
+            loadingMessageId = `loading-${Date.now()}`;
+            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+    
+            try {
+                const response = await fetch('http://localhost:8000/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: messages })
+                });
+    
+                const data = await response.json();
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) loadingDiv.remove();
+    
+                if (data.error) {
+                    chatBox.innerHTML += `<div style="color:red;"><b>Error:</b> ${data.human_answer}</div>`;
+                } else {
+                    chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
+    
+                    if (data.chart_data) {
+                        renderChart(data.chart_data);
+                    } else if (data.db_result && data.db_result.rows.length > 0) {
+                        let formattedResult = "";
+                        data.db_result.rows.forEach(row => {
+                            formattedResult += row.join(' | ') + "<br>";
+                        });
+                        chatBox.innerHTML += `<div><b>Result:</b><br>${formattedResult}</div>`;
+                    }
+                }
+    
+                chatBox.scrollTop = chatBox.scrollHeight;
+    
+            } catch (error) {
+                console.error('Error:', error);
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
+            }
+    
+            userInput.value = '';
+        });
+    
+        let messages = [];
+    </script>
+     -->
+
+
+
+
+    <!-- 
+    <script>
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const chartCanvas = document.getElementById('chart');
+        let chart;
+    
+        function detectChartType(chartData) {
+            const xLabels = chartData.x;
+    
+            // If x labels are dates or years -> Line Chart
+            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
+                return 'line';
+            }
+            // If less than 5 categories -> Pie Chart
+            else if (xLabels.length <= 5) {
+                return 'pie';
+            }
+            // Otherwise -> Bar Chart
+            else {
+                return 'bar';
+            }
+        }
+    
+        function renderChart(chartData) {
+            if (chart) chart.destroy();
+            chartCanvas.style.display = 'block';
+    
+            const chartType = detectChartType(chartData);
+    
+            chart = new Chart(chartCanvas, {
+                type: chartType,
+                data: {
+                    labels: chartData.x,
+                    datasets: [{
+                        label: 'Values',
+                        data: chartData.y,
+                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        fill: false,
+                        tension: 0.4 // Smooth curve for line chart
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            position: chartType === 'pie' ? 'top' : 'bottom',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Generated Chart'
+                        }
+                    },
+                    scales: (chartType !== 'pie') ? {
+                        x: {
+                            title: { display: true, text: 'X Axis' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Y Axis' },
+                            beginAtZero: true
+                        }
+                    } : {}
+                }
+            });
+        } -->
 
 
 <!-- <!DOCTYPE html>
@@ -192,7 +618,7 @@
     </div>
 
     Chart.js CDN -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
         const chatBox = document.getElementById('chatBox');
@@ -332,7 +758,7 @@
     </script>
 
 </body>
-</html> --> 
+</html> -->
 
 
 <!-- <!DOCTYPE html>
@@ -342,7 +768,7 @@
     <title>Gemini SQL Chat UI</title>
 
      Load Chart.js from CDN -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
 
     <style>
         body { font-family: Arial, sans-serif; margin: 30px; }
@@ -364,7 +790,7 @@
     <button id="sendButton">Send</button>
 
      Canvas for chart -->
-    <!-- <canvas id="chartCanvas" width="600" height="400" style="display:none; margin-top: 20px;"></canvas>
+<!-- <canvas id="chartCanvas" width="600" height="400" style="display:none; margin-top: 20px;"></canvas>
 
     <script>
         const chatBox = document.getElementById('chatBox');
@@ -615,7 +1041,7 @@
     <meta charset="UTF-8">
     <title>Gemini SQL Chat UI</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  Added Chart.js -->
-    <!-- <style>
+<!-- <style>
         body { font-family: Arial, sans-serif; margin: 30px; }
         #chatBox { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
         #userInput { width: 80%; padding: 8px; }
@@ -730,7 +1156,7 @@
     </script>
 
 </body>
-</html> --> 
+</html> -->
 
 
 

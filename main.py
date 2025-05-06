@@ -3,9 +3,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import psycopg2
+import os
+from dotenv import load_dotenv
 
 from gemini_sdk import get_chat_completion, model
-
+load_dotenv()
 app = FastAPI()
 
 # Allow CORS
@@ -17,13 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# PostgreSQL connection
 def get_db_connection():
     return psycopg2.connect(
-        host="localhost",
-        database="demodb",
-        user="postgres",
-        password="postgre2025",
-        port="5432"
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT"),
     )
 
 def run_sql_query(sql_query):
@@ -93,9 +96,18 @@ async def chat(request: Request):
                 chart_data["x"].append(row[0])
                 chart_data["y"].append(row[1])
 
+            x_label = db_result["columns"][0] if db_result["columns"] else "X Axis"
+            y_label = db_result["columns"][1] if len(db_result["columns"]) > 1 else "Y Axis"
+
+  
             return {
                 "sql_query": sql_query,
-                "chart_data": chart_data,
+                "chart_data": {
+                    "x": chart_data["x"],
+                    "y": chart_data["y"],
+                    "x_label": x_label,
+                    "y_label": y_label
+                },
                 "error": False
             }
         else:
@@ -116,6 +128,127 @@ async def chat(request: Request):
             "human_answer": f"Sorry, an error occurred: {str(e)}",
             "error": True
         }
+
+
+
+# from fastapi import FastAPI, Request
+# from fastapi.responses import HTMLResponse
+# from fastapi.middleware.cors import CORSMiddleware
+# from pathlib import Path
+# import psycopg2
+
+# from gemini_sdk import get_chat_completion, model
+
+# app = FastAPI()
+
+# # Allow CORS
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# def get_db_connection():
+#     return psycopg2.connect(
+#         host="localhost",
+#         database="demodb",
+#         user="postgres",
+#         password="postgre2025",
+#         port="5432"
+#     )
+
+# def run_sql_query(sql_query):
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
+#         cur.execute(sql_query)
+#         rows = cur.fetchall()
+#         columns = [desc[0] for desc in cur.description]
+#         cur.close()
+#         conn.close()
+#         return {"columns": columns, "rows": rows}
+#     except Exception as e:
+#         print(f"Database error: {e}")
+#         raise e
+
+# def convert_to_human_readable(user_prompt, db_result):
+#     try:
+#         if not db_result["rows"]:
+#             return "No results found."
+
+#         rows_text = ""
+#         for row in db_result["rows"]:
+#             rows_text += ", ".join(str(item) for item in row) + "\n"
+
+#         second_prompt = f"""
+# User asked: "{user_prompt}"
+
+# Here is the SQL query result:
+# {rows_text}
+
+# Based on the user's request and the SQL result, generate a human-readable answer.
+# Do not show raw data.
+# """
+
+#         response = model.generate_content(second_prompt)
+#         return response.text.strip()
+
+#     except Exception as e:
+#         print(f"Error in human-readable conversion: {e}")
+#         return "Couldn't generate human readable answer."
+
+# @app.get("/", response_class=HTMLResponse)
+# async def serve_home():
+#     html_path = Path("index.html")
+#     return HTMLResponse(content=html_path.read_text(), status_code=200)
+
+# @app.post("/chat")
+# async def chat(request: Request):
+#     data = await request.json()
+#     messages = data.get("messages", [])
+    
+#     if not messages:
+#         return {"reply": "No message provided."}
+
+#     user_prompt = messages[-1]["content"]
+
+#     try:
+#         chart_mode = "chart" in user_prompt.lower()
+
+#         sql_query = get_chat_completion(messages, chart_mode=chart_mode)
+#         db_result = run_sql_query(sql_query)
+        
+#         if chart_mode:
+#             chart_data = {"x": [], "y": []}
+#             for row in db_result["rows"]:
+#                 chart_data["x"].append(row[0])
+#                 chart_data["y"].append(row[1])
+
+#             return {
+#                 "sql_query": sql_query,
+#                 "chart_data": chart_data,
+#                 "error": False
+#             }
+#         else:
+#             human_answer = convert_to_human_readable(user_prompt, db_result)
+
+#             return {
+#                 "sql_query": sql_query,
+#                 "db_result": db_result,
+#                 "human_answer": human_answer,
+#                 "error": False
+#             }
+
+#     except Exception as e:
+#         return {
+#             "sql_query": "",
+#             "db_result": {"columns": [], "rows": []},
+#             "chart_data": None,
+#             "human_answer": f"Sorry, an error occurred: {str(e)}",
+#             "error": True
+#         }
 
 # from fastapi import FastAPI, Request
 # from fastapi.responses import HTMLResponse

@@ -10,11 +10,11 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 def fetch_table_structure():
     try:
         conn = psycopg2.connect(
-            host="localhost",
-            database="demodb",
-            user="postgres",
-            password="postgre2025",
-            port="5432"
+            host=os.getenv("DB_HOST"),
+            database=os.getenv("DB_NAME"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            port=os.getenv("DB_PORT"),
         )
         cur = conn.cursor()
 
@@ -70,12 +70,14 @@ Rules:
 """
 
         if chart_mode:
-            final_prompt += """
+          final_prompt += """
 
 Important:
 - User wants a chart.
 - Generate SQL that selects exactly 2 columns: one for x-axis (labels), one for y-axis (values).
-- Alias them as 'x' and 'y'.
+- Always alias the first column meaningfully (e.g., 'Year', 'Department Name', 'Employee Name', etc.).
+- Always alias the second column meaningfully (e.g., 'Sales Count', 'Project Count', etc.).
+- Do not use generic aliases like x or y.
 - Limit results if needed.
 """
 
@@ -93,6 +95,103 @@ Important:
     except Exception as e:
         print(f"Error during Gemini call: {e}")
         raise e
+
+
+# import os
+# import google.generativeai as genai
+# from dotenv import load_dotenv
+# import psycopg2
+
+# load_dotenv()
+
+# genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# def fetch_table_structure():
+#     try:
+#         conn = psycopg2.connect(
+#             host="localhost",
+#             database="demodb",
+#             user="postgres",
+#             password="postgre2025",
+#             port="5432"
+#         )
+#         cur = conn.cursor()
+
+#         table_structure = "You must assume the following PostgreSQL database schema:\n\nTables:\n"
+
+#         cur.execute("""
+#             SELECT table_name 
+#             FROM information_schema.tables 
+#             WHERE table_schema='public' AND table_type='BASE TABLE'
+#         """)
+#         tables = cur.fetchall()
+
+#         for table in tables:
+#             table_name = table[0]
+#             table_structure += f"\n{table_name}\n"
+
+#             cur.execute(f"""
+#                 SELECT column_name, data_type 
+#                 FROM information_schema.columns 
+#                 WHERE table_name = '{table_name}'
+#             """)
+#             columns = cur.fetchall()
+
+#             for column in columns:
+#                 table_structure += f"- {column[0]} ({column[1]})\n"
+
+#         cur.close()
+#         conn.close()
+
+#         return table_structure
+
+#     except Exception as e:
+#         print(f"Error fetching table structure: {e}")
+#         return ""
+
+# model = genai.GenerativeModel('gemini-1.5-pro')
+
+# def get_chat_completion(messages, chart_mode=False):
+#     try:
+#         user_message = messages[-1]["content"]
+#         print("Sending to Gemini:", user_message)
+
+#         table_structure = fetch_table_structure()
+
+#         final_prompt = table_structure + """
+
+# Rules:
+# - Always generate queries based on these tables and their relationships.
+# - Use proper JOINs where necessary.
+# - Use ILIKE for any text comparison to make it case-insensitive.
+# - Do not hallucinate columns.
+# - Output only pure PostgreSQL SQL code.
+# """
+
+#         if chart_mode:
+#             final_prompt += """
+
+# Important:
+# - User wants a chart.
+# - Generate SQL that selects exactly 2 columns: one for x-axis (labels), one for y-axis (values).
+# - Alias them as 'x' and 'y'.
+# - Limit results if needed.
+# """
+
+#         final_prompt += "\n\nUser Request: " + user_message
+
+#         response = model.generate_content(final_prompt)
+
+#         print("Gemini SQL response:", response.text)
+
+#         sql_query = response.text.strip()
+#         sql_query = sql_query.replace('```sql', '').replace('```', '').strip()
+
+#         return sql_query
+
+#     except Exception as e:
+#         print(f"Error during Gemini call: {e}")
+#         raise e
 
 
 # import os
