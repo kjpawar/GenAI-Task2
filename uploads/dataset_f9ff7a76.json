@@ -1,0 +1,44 @@
+{
+  "dataset": [
+    {
+      "input_text": "Show monthly total revenue for the past year for a line chart.",
+      "output_text": "SELECT TO_CHAR(revenue_date, 'YYYY-MM') AS month, SUM(amount) AS total_revenue FROM revenues WHERE revenue_date >= CURRENT_DATE - INTERVAL '1 year' GROUP BY month ORDER BY month;"
+    },
+    {
+      "input_text": "Which customer generated the highest revenue last quarter?",
+      "output_text": "SELECT customer_id, SUM(amount) AS total_revenue FROM revenues WHERE revenue_date >= DATE_TRUNC('quarter', CURRENT_DATE) - INTERVAL '1 quarter' AND revenue_date < DATE_TRUNC('quarter', CURRENT_DATE) GROUP BY customer_id ORDER BY total_revenue DESC LIMIT 1;"
+    },
+    {
+      "input_text": "Show the quarterly expense trend over the last 2 years.",
+      "output_text": "SELECT TO_CHAR(expense_date, 'YYYY-Q') AS quarter, SUM(amount) AS total_expense FROM expenses WHERE expense_date >= CURRENT_DATE - INTERVAL '2 years' GROUP BY quarter ORDER BY quarter;"
+    },
+    {
+      "input_text": "List top 5 departments with the highest operational costs.",
+      "output_text": "SELECT department_name, SUM(expense_amount) AS total_expense FROM department_expenses GROUP BY department_name ORDER BY total_expense DESC LIMIT 5;"
+    },
+    {
+      "input_text": "Find the average transaction size per account.",
+      "output_text": "SELECT account_id, AVG(amount) AS avg_transaction_amount FROM transactions GROUP BY account_id ORDER BY avg_transaction_amount DESC;"
+    },
+    {
+      "input_text": "Which branch had the highest loan disbursement last year?",
+      "output_text": "SELECT branch_name, SUM(loan_amount) AS total_loans FROM loans WHERE loan_date >= DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year' AND loan_date < DATE_TRUNC('year', CURRENT_DATE) GROUP BY branch_name ORDER BY total_loans DESC LIMIT 1;"
+    },
+    {
+      "input_text": "Give a pie chart of expense distribution among departments for the current year.",
+      "output_text": "SELECT department_name AS label, SUM(expense_amount) AS total_expense FROM department_expenses WHERE expense_date >= DATE_TRUNC('year', CURRENT_DATE) GROUP BY department_name;"
+    },
+    {
+      "input_text": "Find monthly new customer registrations for the last 12 months.",
+      "output_text": "SELECT TO_CHAR(registration_date, 'YYYY-MM') AS month, COUNT(*) AS registrations FROM customers WHERE registration_date >= CURRENT_DATE - INTERVAL '1 year' GROUP BY month ORDER BY month;"
+    },
+    {
+      "input_text": "Show the trend of net profits month by month for the last 18 months.",
+      "output_text": "WITH revenue AS (SELECT DATE_TRUNC('month', revenue_date) AS month, SUM(amount) AS total_revenue FROM revenues WHERE revenue_date >= CURRENT_DATE - INTERVAL '18 months' GROUP BY month), expenses AS (SELECT DATE_TRUNC('month', expense_date) AS month, SUM(amount) AS total_expense FROM expenses WHERE expense_date >= CURRENT_DATE - INTERVAL '18 months' GROUP BY month) SELECT r.month, r.total_revenue - e.total_expense AS net_profit FROM revenue r JOIN expenses e ON r.month = e.month ORDER BY r.month;"
+    },
+    {
+      "input_text": "Find the average processing time for transactions per branch.",
+      "output_text": "SELECT branch_id, AVG(EXTRACT(EPOCH FROM (processed_at - created_at))/60) AS avg_processing_time_minutes FROM transactions WHERE processed_at IS NOT NULL GROUP BY branch_id ORDER BY avg_processing_time_minutes;"
+    }
+  ]
+}

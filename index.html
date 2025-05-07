@@ -9,6 +9,15 @@
         #chatBox { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
         #userInput { width: 80%; padding: 8px; }
         #sendButton { padding: 8px 12px; }
+        .uploading { color: blue; }
+    .success { color: green; }
+    .warning { color: orange; }
+    .error { color: red; }
+    #trainingStats {
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #666;
+    }
         code { background-color: #eee; padding: 4px; display: block; margin-top: 5px; }
         canvas { width: 300px !important; height: 300px !important; margin-top: 10px; }
         .spinner { margin: 10px 0; width: 24px; height: 24px; border: 4px solid #ccc; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
@@ -17,6 +26,61 @@
 </head>
 
 <body>
+
+<!-- Add this near the top of the body -->
+
+<div id="fineTuningSection">
+    <h3>Model Training</h3>
+    <input type="file" id="datasetUpload" accept=".json" />
+    <button id="uploadBtn">Train Model</button>
+    <div id="uploadStatus"></div>
+    <div id="trainingStats">
+        Examples loaded: <span id="exampleCount">0</span>
+        | Last trained: <span id="lastTrained">Never</span>
+    </div>
+</div>
+<!-- <div style="margin-bottom: 20px; padding: 10px; border: 1px dashed #ccc;">
+    <h3>Fine-Tuning</h3>
+    <input type="file" id="datasetUpload" accept=".json" />
+    <button id="uploadButton">Upload Dataset for Fine-Tuning</button>
+    <div id="uploadStatus"></div>
+</div> -->
+
+<!-- Add this script at the end of the existing script -->
+<script>
+    document.getElementById('uploadButton').addEventListener('click', async () => {
+        const fileInput = document.getElementById('datasetUpload');
+        const file = fileInput.files[0];
+        
+        if (!file) {
+            document.getElementById('uploadStatus').innerHTML = 'Please select a file first.';
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        document.getElementById('uploadStatus').innerHTML = 'Uploading and fine-tuning...';
+        
+        try {
+            const response = await fetch('http://localhost:8000/upload-dataset', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            document.getElementById('uploadStatus').innerHTML = 
+                result.success ? 
+                `<span style="color:green;">${result.message}</span>` : 
+                `<span style="color:red;">${result.message}</span>`;
+        } catch (error) {
+            document.getElementById('uploadStatus').innerHTML = 
+                `<span style="color:red;">Error: ${error.message}</span>`;
+        }
+    });
+</script>
+
+
     <h2>PostgreSQL Query Generator (Gemini)</h2>
 
     <div id="chatBox"></div>
@@ -134,1392 +198,89 @@
         });
 
         let messages = [];
-    </script>
-</body>
-</html>
 
 
-<!-- <!DOCTYPE html>
-<html lang="en">
 
-<head>
-    <meta charset="UTF-8">
-    <title>PostgreSQL Query Generator (Gemini)</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 30px;
+// Update training stats
+async function updateTrainingStats() {
+        const res = await fetch('/training-status');
+        const data = await res.json();
+        document.getElementById('exampleCount').textContent = data.example_count;
+        if (data.last_updated) {
+            const date = new Date(data.last_updated * 1000);
+            document.getElementById('lastTrained').textContent = date.toLocaleString();
         }
+    }
 
-        #chatBox {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 400px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            white-space: pre-wrap;
-            background-color: #f9f9f9;
-        }
-
-        #userInput {
-            width: 80%;
-            padding: 8px;
-        }
-
-        #sendButton {
-            padding: 8px 12px;
-        }
-
-        code {
-            background-color: #eee;
-            padding: 4px;
-            display: block;
-            margin-top: 5px;
-        }
-
-        canvas {
-            width: 300px !important;
-            height: 300px !important;
-            margin-top: 10px;
-        }
-
-        .spinner {
-            margin: 10px 0;
-            width: 24px;
-            height: 24px;
-            border: 4px solid #ccc;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-    </style>
-</head>
-
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-    <canvas id="chart" style="display:none;"></canvas>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-        const chartCanvas = document.getElementById('chart');
-        let chart;
-
-        function detectChartType(chartData) {
-            const xLabels = chartData.x;
-
-            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
-                return 'line';
-            } else if (xLabels.length <= 5) {
-                return 'pie';
+    // Upload handler
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+        const fileInput = document.getElementById('datasetUpload');
+        if (!fileInput.files.length) return;
+        
+        const statusDiv = document.getElementById('uploadStatus');
+        statusDiv.innerHTML = '<span class="uploading">Processing...</span>';
+        
+        try {
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            const res = await fetch('/upload-dataset', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await res.json();
+            
+            if (result.status === "exists") {
+                statusDiv.innerHTML = '<span class="warning">ℹ️ Model already knows this dataset</span>';
+            } else if (result.added > 0) {
+                statusDiv.innerHTML = `<span class="success">✓ Added ${result.added} new examples</span>`;
             } else {
-                return 'bar';
+                statusDiv.innerHTML = '<span class="warning">⚠️ No new examples added</span>';
             }
+            
+            updateTrainingStats();
+        } catch (err) {
+            statusDiv.innerHTML = `<span class="error">✗ ${err.message}</span>`;
         }
-
-        function renderChart(chartData) {
-            if (chart) chart.destroy();
-            chartCanvas.style.display = 'block';
-
-            const chartType = detectChartType(chartData);
-
-            chart = new Chart(chartCanvas, {
-                type: chartType,
-                data: {
-                    labels: chartData.x,
-                    datasets: [{
-                        label: chartData.y_label || 'Values', // <- Dynamic Y label for legend
-                        data: chartData.y,
-                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
-                        borderColor: '#333',
-                        borderWidth: 1,
-                        fill: false,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: false,
-                    plugins: {
-                        legend: {
-                            position: chartType === 'pie' ? 'top' : 'bottom',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Generated Chart'
-                        }
-                    },
-                    scales: (chartType !== 'pie') ? {
-                        x: {
-                            title: {
-                                display: true,
-                                text: chartData.x_label || 'X Axis' // <- Dynamic X label
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: chartData.y_label || 'Y Axis' // <- Dynamic Y label
-                            },
-                            beginAtZero: true
-                        }
-                    } : {}
-                }
-            });
-        }
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                if (data.error) {
-                    chatBox.innerHTML += `<div style="color:red;"><b>Error:</b> ${data.human_answer}</div>`;
-                } else {
-                    chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-
-                    if (data.chart_data) {
-                        chatBox.innerHTML += `<div><b>Chart Data JSON:</b> <code>${JSON.stringify(data.chart_data, null, 2)}</code></div>`;
-                        renderChart(data.chart_data);
-                    } else {
-                        let formattedResult = "";
-                        if (data.db_result && data.db_result.rows.length > 0) {
-                            data.db_result.rows.forEach(row => {
-                                formattedResult += row.join(' | ') + "\n";
-                            });
-                        } else {
-                            formattedResult = "No data found.";
-                        }
-
-                        chatBox.innerHTML += `<div><b>Result:</b><br>${formattedResult}</div>`;
-                        chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
-                    }
-
-
-                }
-
-                chatBox.scrollTop = chatBox.scrollHeight;
-
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-
-        let messages = [];
-    </script>
-
-</body>
-
-</html> -->
-
-
-<!-- <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-        const chartCanvas = document.getElementById('chart');
-        let chart;
-    
-        function detectChartType(chartData) {
-            const xLabels = chartData.x;
-    
-            // If x labels are dates or years -> Line Chart
-            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
-                return 'line';
-            }
-            // If less than 5 categories -> Pie Chart
-            else if (xLabels.length <= 5) {
-                return 'pie';
-            }
-            // Otherwise -> Bar Chart
-            else {
-                return 'bar';
-            }
-        }
-    
-        function renderChart(chartData) {
-            if (chart) chart.destroy();
-            chartCanvas.style.display = 'block';
-    
-            const chartType = detectChartType(chartData);
-    
-            chart = new Chart(chartCanvas, {
-                type: chartType,
-                data: {
-                    labels: chartData.x,
-                    datasets: [{
-                        label: 'Values',
-                        data: chartData.y,
-                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
-                        borderColor: '#333',
-                        borderWidth: 1,
-                        fill: false,
-                        tension: 0.4 // Smooth curve for line chart
-                    }]
-                },
-                options: {
-                    responsive: false,
-                    plugins: {
-                        legend: {
-                            position: chartType === 'pie' ? 'top' : 'bottom',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Generated Chart'
-                        }
-                    },
-                    scales: (chartType !== 'pie') ? {
-                        x: {
-                            title: { display: true, text: 'X Axis' }
-                        },
-                        y: {
-                            title: { display: true, text: 'Y Axis' },
-                            beginAtZero: true
-                        }
-                    } : {}
-                }
-            });
-        }
-    
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-    
-            messages.push({ role: 'user', content: message });
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-    
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-    
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-    
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-    
-                if (data.error) {
-                    chatBox.innerHTML += `<div style="color:red;"><b>Error:</b> ${data.human_answer}</div>`;
-                } else {
-                    chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-    
-                    if (data.chart_data) {
-                        renderChart(data.chart_data);
-                    } else if (data.db_result && data.db_result.rows.length > 0) {
-                        let formattedResult = "";
-                        data.db_result.rows.forEach(row => {
-                            formattedResult += row.join(' | ') + "<br>";
-                        });
-                        chatBox.innerHTML += `<div><b>Result:</b><br>${formattedResult}</div>`;
-                    }
-                }
-    
-                chatBox.scrollTop = chatBox.scrollHeight;
-    
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-    
-            userInput.value = '';
-        });
-    
-        let messages = [];
-    </script>
-     -->
-
-
-
-
-    <!-- 
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-        const chartCanvas = document.getElementById('chart');
-        let chart;
-    
-        function detectChartType(chartData) {
-            const xLabels = chartData.x;
-    
-            // If x labels are dates or years -> Line Chart
-            if (xLabels.every(label => /^\d{4}$/.test(label) || /^\d{4}-\d{2}-\d{2}$/.test(label))) {
-                return 'line';
-            }
-            // If less than 5 categories -> Pie Chart
-            else if (xLabels.length <= 5) {
-                return 'pie';
-            }
-            // Otherwise -> Bar Chart
-            else {
-                return 'bar';
-            }
-        }
-    
-        function renderChart(chartData) {
-            if (chart) chart.destroy();
-            chartCanvas.style.display = 'block';
-    
-            const chartType = detectChartType(chartData);
-    
-            chart = new Chart(chartCanvas, {
-                type: chartType,
-                data: {
-                    labels: chartData.x,
-                    datasets: [{
-                        label: 'Values',
-                        data: chartData.y,
-                        backgroundColor: ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c'],
-                        borderColor: '#333',
-                        borderWidth: 1,
-                        fill: false,
-                        tension: 0.4 // Smooth curve for line chart
-                    }]
-                },
-                options: {
-                    responsive: false,
-                    plugins: {
-                        legend: {
-                            position: chartType === 'pie' ? 'top' : 'bottom',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Generated Chart'
-                        }
-                    },
-                    scales: (chartType !== 'pie') ? {
-                        x: {
-                            title: { display: true, text: 'X Axis' }
-                        },
-                        y: {
-                            title: { display: true, text: 'Y Axis' },
-                            beginAtZero: true
-                        }
-                    } : {}
-                }
-            });
-        } -->
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>PostgreSQL Query Generator (Gemini)</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 30px;
-            text-align: center;
-        }
-        #chatBox {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 400px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            white-space: pre-wrap;
-            background-color: #f9f9f9;
-            text-align: left;
-        }
-        #userInput {
-            width: 80%;
-            padding: 8px;
-        }
-        #sendButton {
-            padding: 8px 12px;
-        }
-        code {
-            background-color: #eee;
-            padding: 4px;
-            display: block;
-            margin-top: 5px;
-        }
-        .spinner {
-            margin: 10px 0;
-            width: 24px;
-            height: 24px;
-            border: 4px solid #ccc;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        #chartContainer {
-            width: 320px;
-            height: 240px;
-            margin: 20px auto;
-            padding: 10px;
-            box-shadow: 0px 0px 10px rgba(0,0,0,0.2);
-            border-radius: 10px;
-            background-color: white;
-            display: none;
-        }
-    </style>
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-    <div id="chartContainer">
-        <canvas id="chartCanvas" width="300" height="200"></canvas>
-    </div>
-
-    Chart.js CDN -->
-<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-        const chartCanvas = document.getElementById('chartCanvas');
-        const chartContainer = document.getElementById('chartContainer');
-        let messages = [];
-        let loadingMessageId = null;
-        let currentChart = null; // to hold chart instance
-
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                chartContainer.style.display = 'none';
-                if (currentChart) {
-                    currentChart.destroy();
-                    currentChart = null;
-                }
-                return;
-            }
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-
-                if (data.chart_data) {
-                    if (currentChart) {
-                        currentChart.destroy();
-                    }
-
-                    let chartType = 'bar';
-                    if (data.chart_data.x.length <= 5) {
-                        chartType = 'pie';
-                    } else if (data.chart_data.x.length > 10) {
-                        chartType = 'line';
-                    }
-
-                    const ctx = chartCanvas.getContext('2d');
-                    currentChart = new Chart(ctx, {
-                        type: chartType,
-                        data: {
-                            labels: data.chart_data.x,
-                            datasets: [{
-                                label: 'Values',
-                                data: data.chart_data.y,
-                                backgroundColor: [
-                                    '#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f',
-                                    '#1abc9c', '#e67e22', '#34495e', '#95a5a6', '#d35400'
-                                ],
-                                borderColor: '#333',
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            responsive: false,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    display: chartType !== 'bar'
-                                }
-                            },
-                            scales: chartType !== 'pie' ? {
-                                x: {
-                                    title: {
-                                        display: true,
-                                        text: 'X Axis Label', // You can change it dynamically too
-                                        font: {
-                                            size: 14
-                                        }
-                                    }
-                                },
-                                y: {
-                                    beginAtZero: true,
-                                    title: {
-                                        display: true,
-                                        text: 'Y Axis Label', // You can change it dynamically too
-                                        font: {
-                                            size: 14
-                                        }
-                                    }
-                                }
-                            } : {} // No scales for pie
-                        }
-                    });
-
-                    chartContainer.style.display = 'block';
-                } else {
-                    chartContainer.style.display = 'none';
-
-                    let formattedResult = "";
-                    if (data.db_result && data.db_result.rows.length > 0) {
-                        data.db_result.rows.forEach(row => {
-                            formattedResult += row.join(' | ') + "\n";
-                        });
-                    } else {
-                        formattedResult = "No data found.";
-                    }
-
-                    chatBox.innerHTML += `<div><b>Database Result:</b> <code>${formattedResult}</code></div>`;
-                    chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
-                }
-
-                chatBox.scrollTop = chatBox.scrollHeight;
-
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-    </script>
-
-</body>
-</html> -->
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Gemini SQL Chat UI</title>
-
-     Load Chart.js from CDN -->
-<!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
-
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
-        #chatBox { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
-        #userInput { width: 80%; padding: 8px; }
-        #sendButton { padding: 8px 12px; }
-        code { background-color: #eee; padding: 4px; display: block; margin-top: 5px; }
-        .spinner { margin: 10px 0; width: 24px; height: 24px; border: 4px solid #ccc; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-     Canvas for chart -->
-<!-- <canvas id="chartCanvas" width="600" height="400" style="display:none; margin-top: 20px;"></canvas>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-        const chartCanvas = document.getElementById('chartCanvas');
-
-        let messages = [];
-        let loadingMessageId = null;
-        window.currentChart = null; // to track old charts
-
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                chartCanvas.style.display = 'none';
-                if (window.currentChart) {
-                    window.currentChart.destroy();
-                }
-                return;
-            }
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-
-                if (data.chart_data) {
-                    // If chart data is available, draw chart
-                    drawChart(data.chart_data);
-                } else {
-                    chartCanvas.style.display = 'none';
-                    
-                    let formattedResult = "";
-                    if (data.db_result && data.db_result.rows.length > 0) {
-                        data.db_result.rows.forEach(row => {
-                            formattedResult += row.join(' | ') + "\n";
-                        });
-                    } else {
-                        formattedResult = "No data found.";
-                    }
-
-                    chatBox.innerHTML += `<div><b>Database Result:</b> <code>${formattedResult}</code></div>`;
-                    chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
-                }
-
-                chatBox.scrollTop = chatBox.scrollHeight;
-
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-
-        function drawChart(chartData) {
-            const xLabels = chartData.x;
-            const yValues = chartData.y;
-
-            chartCanvas.style.display = 'block';
-            const ctx = chartCanvas.getContext('2d');
-
-            // Destroy previous chart if any
-            if (window.currentChart) {
-                window.currentChart.destroy();
-            }
-
-            // Auto detect chart type
-            let chartType = 'bar';
-            if (xLabels.length > 5) {
-                chartType = 'line';
-            } else if (typeof yValues[0] === 'number' && xLabels.length <= 5) {
-                chartType = 'bar';
-            } else if (typeof yValues[0] === 'string') {
-                chartType = 'pie';
-            }
-
-            window.currentChart = new Chart(ctx, {
-                type: chartType,
-                data: {
-                    labels: xLabels,
-                    datasets: [{
-                        label: 'Values',
-                        data: yValues,
-                        backgroundColor: [
-                            'rgba(255, 99, 132, 0.6)',
-                            'rgba(54, 162, 235, 0.6)',
-                            'rgba(255, 206, 86, 0.6)',
-                            'rgba(75, 192, 192, 0.6)',
-                            'rgba(153, 102, 255, 0.6)',
-                            'rgba(255, 159, 64, 0.6)'
-                        ],
-                        borderColor: [
-                            'rgba(255,99,132,1)',
-                            'rgba(54, 162, 235, 1)',
-                            'rgba(255, 206, 86, 1)',
-                            'rgba(75, 192, 192, 1)',
-                            'rgba(153, 102, 255, 1)',
-                            'rgba(255, 159, 64, 1)'
-                        ],
-                        borderWidth: 1,
-                        fill: chartType === 'line' ? false : true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: {
-                        duration: 1000,
-                        easing: 'easeOutBounce'
-                    },
-                    scales: chartType !== 'pie' ? {
-                        y: {
-                            beginAtZero: true
-                        }
-                    } : {}
-                }
-            });
-        }
-    </script>
-
-</body>
-</html>  -->
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Gemini SQL Chat UI</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
-        #chatBox { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
-        #userInput { width: 80%; padding: 8px; }
-        #sendButton { padding: 8px 12px; }
-        code { background-color: #eee; padding: 4px; display: block; margin-top: 5px; }
-        .spinner { margin: 10px 0; width: 24px; height: 24px; border: 4px solid #ccc; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-
-        let messages = [];
-        let loadingMessageId = null;
-
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                return;
-            }
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-
-                if (data.chart_data) {
-                    chatBox.innerHTML += `<div><b>Chart Data JSON:</b> <code>${JSON.stringify(data.chart_data, null, 2)}</code></div>`;
-                } else {
-                    let formattedResult = "";
-                    if (data.db_result && data.db_result.rows.length > 0) {
-                        data.db_result.rows.forEach(row => {
-                            formattedResult += row.join(' | ') + "\n";
-                        });
-                    } else {
-                        formattedResult = "No data found.";
-                    }
-
-                    chatBox.innerHTML += `<div><b>Database Result:</b> <code>${formattedResult}</code></div>`;
-                    chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
-                }
-
-                chatBox.scrollTop = chatBox.scrollHeight;
-
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-    </script>
-
-</body>
-</html> -->
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Gemini SQL Chat UI</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  Added Chart.js -->
-<!-- <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
-        #chatBox { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
-        #userInput { width: 80%; padding: 8px; }
-        #sendButton { padding: 8px 12px; }
-        code { background-color: #eee; padding: 4px; display: block; margin-top: 5px; }
-        .spinner { margin: 10px 0; width: 24px; height: 24px; border: 4px solid #ccc; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-
-        let messages = [];
-        let loadingMessageId = null;
-
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                return;
-            }
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                if (data.chart_data) {
-                    // Chart Mode
-                    chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-                    chatBox.innerHTML += `<canvas id="chartCanvas" width="400" height="200"></canvas>`;
-
-                    const ctx = document.getElementById('chartCanvas').getContext('2d');
-
-                    new Chart(ctx, {
-                        type: 'line', // can change to 'bar', 'pie', etc.
-                        data: {
-                            labels: data.chart_data.x,
-                            datasets: [{
-                                label: 'Chart Data',
-                                data: data.chart_data.y,
-                                borderColor: 'blue',
-                                backgroundColor: 'lightblue',
-                                tension: 0.4,
-                                fill: true
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            scales: {
-                                y: { beginAtZero: true }
-                            }
-                        }
-                    });
-
-                } else {
-                    // Normal Mode
-                    let formattedResult = "";
-                    if (data.db_result && data.db_result.rows.length > 0) {
-                        data.db_result.rows.forEach(row => {
-                            formattedResult += row.join(' | ') + "\n";
-                        });
-                    } else {
-                        formattedResult = "No data found.";
-                    }
-
-                    chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-                    chatBox.innerHTML += `<div><b>Database Result:</b> <code>${formattedResult}</code></div>`;
-                    chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
-                }
-
-                chatBox.scrollTop = chatBox.scrollHeight;
-
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-    </script>
-
-</body>
-</html> -->
-
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Gemini SQL Chat UI</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
-        #chatBox { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; background-color: #f9f9f9; }
-        #userInput { width: 80%; padding: 8px; }
-        #sendButton { padding: 8px 12px; }
-        code { background-color: #eee; padding: 4px; display: block; margin-top: 5px; }
-        .spinner { margin: 10px 0; width: 24px; height: 24px; border: 4px solid #ccc; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-
-        let messages = [];
-        let loadingMessageId = null;
-
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                return;
-            }
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                // Format database result nicely
-                let formattedResult = "";
-                if (data.db_result && data.db_result.rows.length > 0) {
-                    data.db_result.rows.forEach(row => {
-                        formattedResult += row.join(' | ') + "\n";
-                    });
-                } else {
-                    formattedResult = "No data found.";
-                }
-
-                chatBox.innerHTML += `<div><b>SQL Query:</b> <code>${data.sql_query}</code></div>`;
-                chatBox.innerHTML += `<div><b>Database Result:</b> <code>${formattedResult}</code></div>`;
-                chatBox.innerHTML += `<div><b>Gemini Answer:</b> <code>${data.human_answer}</code></div>`;
-                chatBox.scrollTop = chatBox.scrollHeight;
-
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-    </script>
-
-</body>
-</html> -->
-
-<!-- index.html -->
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Gemini SQL Chat UI</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 30px;
-        }
-        #chatBox {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 500px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            white-space: pre-wrap;
-            background-color: #f9f9f9;
-        }
-        #userInput {
-            width: 80%;
-            padding: 8px;
-        }
-        #sendButton {
-            padding: 8px 12px;
-        }
-        code {
-            background-color: #eee;
-            padding: 4px;
-            display: block;
-            margin-top: 5px;
-        }
-        .spinner {
-            margin: 10px 0;
-            width: 24px;
-            height: 24px;
-            border: 4px solid #ccc;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        table {
-            margin-top: 10px;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #ccc;
-            padding: 8px;
-        }
-        th {
-            background-color: #eee;
-        }
-    </style>
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-
-        let messages = [];
-        let loadingMessageId = null;
-
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            messages.push({ role: 'user', content: message });
-
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                return;
-            }
-
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ messages: messages })
-                });
-
-                const data = await response.json();
-
-                messages.push({ role: 'assistant', content: data.reply });
-
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-
-                chatBox.innerHTML += `<div><b>Gemini (SQL Query):</b> <code>${data.reply}</code></div>`;
-
-                // Show Database Result
-                if (data.db_result) {
-                    let outputHtml = '<div><b>Query Result:</b><br><table>';
-
-                    // Headers
-                    outputHtml += '<tr>';
-                    data.db_result.columns.forEach(col => {
-                        outputHtml += `<th>${col}</th>`;
-                    });
-                    outputHtml += '</tr>';
-
-                    // Data Rows
-                    data.db_result.rows.forEach(row => {
-                        outputHtml += '<tr>';
-                        row.forEach(cell => {
-                            outputHtml += `<td>${cell}</td>`;
-                        });
-                        outputHtml += '</tr>';
-                    });
-
-                    outputHtml += '</table></div>';
-
-                    chatBox.innerHTML += outputHtml;
-                }
-
-                chatBox.scrollTop = chatBox.scrollHeight;
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-
-            userInput.value = '';
-        });
-    </script>
-
-</body>
-</html> -->
-
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Gemini SQL Chat UI</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 30px;
-        }
-        #chatBox {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 400px;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            white-space: pre-wrap;
-            background-color: #f9f9f9;
-        }
-        #userInput {
-            width: 80%;
-            padding: 8px;
-        }
-        #sendButton {
-            padding: 8px 12px;
-        }
-        code {
-            background-color: #eee;
-            padding: 4px;
-            display: block;
-            margin-top: 5px;
-        }
-        /* Spinner style */
-        .spinner {
-            margin: 10px 0;
-            width: 24px;
-            height: 24px;
-            border: 4px solid #ccc;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-    
-</head>
-<body>
-
-    <h2>PostgreSQL Query Generator (Gemini)</h2>
-
-    <div id="chatBox"></div>
-
-    <input type="text" id="userInput" placeholder="Ask for a SQL Query..." />
-    <button id="sendButton">Send</button>
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendButton = document.getElementById('sendButton');
-    
-        let messages = [];
-        let loadingMessageId = null;
-    
-        sendButton.addEventListener('click', async () => {
-            const message = userInput.value.trim();
-            if (!message) return;
-    
-            messages.push({ role: 'user', content: message });
-    
-            chatBox.innerHTML += `<div><b>You:</b> ${message}</div>`;
-    
-            if (message.toLowerCase() === 'exit') {
-                alert('Session ended. Clearing chat...');
-                messages = [];
-                chatBox.innerHTML = '';
-                userInput.value = '';
-                return;
-            }
-    
-            // Show spinner
-            loadingMessageId = `loading-${Date.now()}`;
-            chatBox.innerHTML += `<div id="${loadingMessageId}"><div class="spinner"></div></div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-    
-            try {
-                const response = await fetch('http://localhost:8000/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ messages: messages })
-                });
-    
-                const data = await response.json();
-    
-                messages.push({ role: 'assistant', content: data.reply });
-    
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.remove();
-    
-                chatBox.innerHTML += `<div><b>Gemini:</b> <code>${data.reply}</code></div>`;
-                chatBox.scrollTop = chatBox.scrollHeight;
-            } catch (error) {
-                console.error('Error:', error);
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) loadingDiv.innerHTML = '<i>Error fetching response.</i>';
-            }
-    
-            userInput.value = '';
-        });
-    </script>
-    
- 
+    });
+
+    // Initialize
+    updateTrainingStats();
+
+    //     document.getElementById('uploadButton').addEventListener('click', async () => {
+    //     const fileInput = document.getElementById('datasetUpload');
+    //     const file = fileInput.files[0];
+        
+    //     if (!file) {
+    //         document.getElementById('uploadStatus').innerHTML = 'Please select a file first.';
+    //         return;
+    //     }
+        
+    //     const formData = new FormData();
+    //     formData.append('file', file);
+        
+    //     document.getElementById('uploadStatus').innerHTML = 'Uploading and fine-tuning...';
+        
+    //     try {
+    //         const response = await fetch('http://localhost:8000/upload-dataset', {
+    //             method: 'POST',
+    //             body: formData
+    //         });
+            
+    //         const result = await response.json();
+    //         document.getElementById('uploadStatus').innerHTML = 
+    //             result.success ? 
+    //             `<span style="color:green;">${result.message}</span>` : 
+    //             `<span style="color:red;">${result.message}</span>`;
+    //     } catch (error) {
+    //         document.getElementById('uploadStatus').innerHTML = 
+    //             `<span style="color:red;">Error: ${error.message}</span>`;
+    //     }
+    // });
+
+
+</script>
 </body>
 </html>
+
