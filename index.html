@@ -39,14 +39,7 @@
         | Last trained: <span id="lastTrained">Never</span>
     </div>
 </div>
-<!-- <div style="margin-bottom: 20px; padding: 10px; border: 1px dashed #ccc;">
-    <h3>Fine-Tuning</h3>
-    <input type="file" id="datasetUpload" accept=".json" />
-    <button id="uploadButton">Upload Dataset for Fine-Tuning</button>
-    <div id="uploadStatus"></div>
-</div> -->
 
-<!-- Add this script at the end of the existing script -->
 <script>
     document.getElementById('uploadButton').addEventListener('click', async () => {
         const fileInput = document.getElementById('datasetUpload');
@@ -252,35 +245,3 @@ async function updateTrainingStats() {
 </body>
 </html>
 
-<!-- 
-//     document.getElementById('uploadButton').addEventListener('click', async () => {
-    //     const fileInput = document.getElementById('datasetUpload');
-    //     const file = fileInput.files[0];
-        
-    //     if (!file) {
-    //         document.getElementById('uploadStatus').innerHTML = 'Please select a file first.';
-    //         return;
-    //     }
-        
-    //     const formData = new FormData();
-    //     formData.append('file', file);
-        
-    //     document.getElementById('uploadStatus').innerHTML = 'Uploading and fine-tuning...';
-        
-    //     try {
-    //         const response = await fetch('http://localhost:8000/upload-dataset', {
-    //             method: 'POST',
-    //             body: formData
-    //         });
-            
-    //         const result = await response.json();
-    //         document.getElementById('uploadStatus').innerHTML = 
-    //             result.success ? 
-    //             `<span style="color:green;">${result.message}</span>` : 
-    //             `<span style="color:red;">${result.message}</span>`;
-    //     } catch (error) {
-    //         document.getElementById('uploadStatus').innerHTML = 
-    //             `<span style="color:red;">Error: ${error.message}</span>`;
-    //     }
-    // });
- -->
