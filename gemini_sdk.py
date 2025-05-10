@@ -51,11 +51,17 @@ def fetch_table_structure():
             table_name = table[0]
             table_structure += f"\n{table_name}\n"
 
-            cur.execute(f"""
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = '{table_name}'
-            """)
+# cur.execute(f"""
+#     SELECT column_name, data_type 
+#     FROM information_schema.columns 
+#     WHERE table_name = '{table_name}'
+# """)
+
+            cur.execute("""
+            SELECT column_name, data_type
+            FROM information_schema.columns 
+            WHERE table_name = %s
+            """, (table_name,))
             columns = cur.fetchall()
 
             for column in columns:
